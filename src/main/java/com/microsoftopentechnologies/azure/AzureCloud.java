@@ -49,6 +49,7 @@ import com.microsoftopentechnologies.azure.AzureSlaveTemplate;
 import com.microsoftopentechnologies.azure.util.AzureUtil;
 import com.microsoftopentechnologies.azure.util.Constants;
 import com.microsoftopentechnologies.azure.util.FailureStage;
+import java.util.Calendar;
 
 public class AzureCloud extends Cloud {
 	private final String subscriptionId;
@@ -129,8 +130,27 @@ public class AzureCloud extends Cloud {
 	}
 
 	public int getMaxVirtualMachinesLimit() {
-		return maxVirtualMachinesLimit;
+                int currentHour = getCurrentHour();
+                SpecificTimeFrame specificTimeFrame = getFirstMatchingSpecificTimeFrame(currentHour);
+                if(specificTimeFrame == null){
+                    return maxVirtualMachinesLimit;
+                }
+                return specificTimeFrame.getMaxVM();
 	}
+        
+        public SpecificTimeFrame getFirstMatchingSpecificTimeFrame(int currentHour){
+            for (SpecificTimeFrame specificTimeFrame : specificTimeFrames){
+                if(currentHour > specificTimeFrame.getStartHour() 
+                        && currentHour < specificTimeFrame.getEndHour()){
+                    return specificTimeFrame;
+                }                    
+            }                
+            return null;
+        }
+        
+        public int getCurrentHour(){
+            return Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        }
 	
 	public String getPassPhrase() {
 		return passPhrase;
