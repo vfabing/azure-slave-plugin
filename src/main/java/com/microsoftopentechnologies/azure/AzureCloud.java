@@ -58,11 +58,12 @@ public class AzureCloud extends Cloud {
 	private final int maxVirtualMachinesLimit;
 	private final List<AzureSlaveTemplate> instTemplates;
 
+	private final List<SpecificTimeFrame> specificTimeFrames;
 	public static final Logger LOGGER = Logger.getLogger(AzureCloud.class.getName());
 
 	@DataBoundConstructor
 	public AzureCloud(String id, String subscriptionId, String serviceManagementCert, String serviceManagementURL, 
-			String maxVirtualMachinesLimit, List<AzureSlaveTemplate> instTemplates, String fileName, String fileData) {
+			String maxVirtualMachinesLimit, List<AzureSlaveTemplate> instTemplates, String fileName, String fileData, List<SpecificTimeFrame> specificTimeFrames) {
 		super(Constants.AZURE_CLOUD_PREFIX+subscriptionId);
 		this.subscriptionId = subscriptionId;
 		this.serviceManagementCert = serviceManagementCert;
@@ -83,6 +84,11 @@ public class AzureCloud extends Cloud {
 			this.instTemplates = Collections.emptyList();
 		} else {
 			this.instTemplates = instTemplates;
+		}
+		if (specificTimeFrames == null) {
+			this.specificTimeFrames = Collections.emptyList();
+		} else {
+			this.specificTimeFrames = specificTimeFrames;
 		}
 		readResolve();
 	}

@@ -1,0 +1,29 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+		<table width="100%">
+			<f:section title="${%Specific_TimeFrame}">
+				<f:entry title="${%Start_Hour}" field="startHour">
+					<f:textbox />
+				</f:entry>
+		  
+				<f:entry title="${%End_Hour}" field="endHour">
+					<f:textbox />
+				</f:entry>
+		  
+				<f:entry title="${%Min_VM}" field="minVM">
+					<f:textbox />
+		  		</f:entry>
+		  		
+				<f:entry title="${%Max_VM}" field="maxVM">
+					<f:textbox />
+		  		</f:entry>
+                                
+		  	</f:section>
+		 	 
+                        <!--TODO-->
+			<!--f:validateButton title="${%Verify_SpecificTimeFrame}" 
+                                          progress="${%Verifying_SpecificTimeFrame}" 
+                                          method="verifySpecificTimeFrame" 
+                                          with="startHour,endHour,minVM,maxVM" /-->			
+		</table>
+</j:jelly>
