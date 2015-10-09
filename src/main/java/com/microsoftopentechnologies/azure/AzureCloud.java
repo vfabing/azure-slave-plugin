@@ -131,11 +131,28 @@ public class AzureCloud extends Cloud {
 
 	public int getMaxVirtualMachinesLimit() {
                 int currentHour = getCurrentHour();
+                LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: currentHour :" + currentHour);
                 SpecificTimeFrame specificTimeFrame = getFirstMatchingSpecificTimeFrame(currentHour);
                 if(specificTimeFrame == null){
+                    LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: No specific Time Frame found. Return maxVirtualMachinesLimit :" + maxVirtualMachinesLimit);
                     return maxVirtualMachinesLimit;
                 }
-                return specificTimeFrame.getMaxVM();
+                int maxVM = specificTimeFrame.getMaxVM();
+                LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: maxVM :" + maxVM);
+                return maxVM;
+	}
+        
+	public int getMinVirtualMachinesLimit() {
+                int currentHour = getCurrentHour();
+                LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: currentHour :" + currentHour);
+                SpecificTimeFrame specificTimeFrame = getFirstMatchingSpecificTimeFrame(currentHour);
+                if(specificTimeFrame == null){
+                    LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: No specific Time Frame found. Return 0");                   
+                    return 0;
+                }
+                int minVM = specificTimeFrame.getMinVM();
+                LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: minVM :" + minVM);
+                return minVM;
 	}
         
         public SpecificTimeFrame getFirstMatchingSpecificTimeFrame(int currentHour){
@@ -370,6 +387,10 @@ public class AzureCloud extends Cloud {
 
 	public List<AzureSlaveTemplate> getInstTemplates() {
 		return Collections.unmodifiableList(instTemplates);
+	}
+	
+	public List<SpecificTimeFrame> getSpecificTimeFrames() {
+		return Collections.unmodifiableList(specificTimeFrames);
 	}
 	
 	@Extension

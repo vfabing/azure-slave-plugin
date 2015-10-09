@@ -15,6 +15,8 @@
  */
 package com.microsoftopentechnologies.azure;
 
+import com.microsoft.windowsazure.Configuration;
+import com.microsoft.windowsazure.management.compute.ComputeManagementClient;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -241,6 +243,9 @@ public class AzureSlave extends AbstractCloudSlave  {
 	}
 	
 	public void idleTimeout() throws Exception {
+                if(minimumVMCountReached()){
+                    return;
+                }
 		if (shutdownOnIdle) {
 			LOGGER.info("AzureSlave: idleTimeout: shutdownOnIdle is true, shutting down slave "+this.getDisplayName());
 			AzureManagementServiceDelegate.shutdownVirtualMachine(this);
@@ -251,6 +256,23 @@ public class AzureSlave extends AbstractCloudSlave  {
 			AzureManagementServiceDelegate.terminateVirtualMachine(this, true);
 			Hudson.getInstance().removeNode(this);
 		}
+	}
+        
+        private boolean minimumVMCountReached() throws Exception {
+                AzureCloud azureCloud = getCloud();
+                int currentMinVM = azureCloud.getMinVirtualMachinesLimit();
+                int currentVMCount = getVirtualMachineCount(azureCloud);
+                if(currentVMCount <= currentMinVM){
+                    return true;
+                }
+                return false;
+        }
+        
+        public int getVirtualMachineCount(AzureCloud azureCloud) throws Exception {
+		Configuration config = ServiceDelegateHelper.loadConfiguration(azureCloud.getSubscriptionId(), 
+				azureCloud.getServiceManagementCert(), azureCloud.getPassPhrase(), azureCloud.getServiceManagementURL());
+		ComputeManagementClient client = ServiceDelegateHelper.getComputeManagementClient(config);
+		return AzureManagementServiceDelegate.getVirtualMachineCount(client);
 	}
 	
 	public AzureCloud getCloud() {
