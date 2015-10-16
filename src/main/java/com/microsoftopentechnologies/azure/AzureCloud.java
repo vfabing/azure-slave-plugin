@@ -46,6 +46,7 @@ import hudson.util.FormValidation;
 import hudson.util.StreamTaskListener;
 
 import com.microsoftopentechnologies.azure.AzureSlaveTemplate;
+import com.microsoftopentechnologies.azure.exceptions.AzureCloudException;
 import com.microsoftopentechnologies.azure.util.AzureUtil;
 import com.microsoftopentechnologies.azure.util.Constants;
 import com.microsoftopentechnologies.azure.util.FailureStage;
@@ -129,7 +130,7 @@ public class AzureCloud extends Cloud {
 		return serviceManagementURL;
 	}
 
-	public int getMaxVirtualMachinesLimit() {
+	public int getMaxVirtualMachinesLimit()  throws AzureCloudException {
                 int currentHour = getCurrentHour();
                 LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: currentHour :" + currentHour);
                 SpecificTimeFrame specificTimeFrame = getFirstMatchingSpecificTimeFrame(currentHour);
@@ -142,7 +143,7 @@ public class AzureCloud extends Cloud {
                 return maxVM;
 	}
         
-	public int getMinVirtualMachinesLimit() {
+	public int getMinVirtualMachinesLimit() throws AzureCloudException  {
                 int currentHour = getCurrentHour();
                 LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: currentHour :" + currentHour);
                 SpecificTimeFrame specificTimeFrame = getFirstMatchingSpecificTimeFrame(currentHour);
@@ -155,14 +156,23 @@ public class AzureCloud extends Cloud {
                 return minVM;
 	}
         
-        public SpecificTimeFrame getFirstMatchingSpecificTimeFrame(int currentHour){
+        public SpecificTimeFrame getFirstMatchingSpecificTimeFrame(int currentHour) throws AzureCloudException {
+            List<SpecificTimeFrame> matchingTimeFrames = new ArrayList<SpecificTimeFrame>();
             for (SpecificTimeFrame specificTimeFrame : specificTimeFrames){
-                if(currentHour > specificTimeFrame.getStartHour() 
+                if(currentHour >= specificTimeFrame.getStartHour() 
                         && currentHour < specificTimeFrame.getEndHour()){
-                    return specificTimeFrame;
+                    matchingTimeFrames.add(specificTimeFrame);
                 }                    
-            }                
-            return null;
+            }
+            if(matchingTimeFrames.size() >= 2){
+                LOGGER.info("Azurecloud: Too many TimeFrames available current time");
+                LOGGER.info("Azurecloud: getFirstMatchingSpecificTimeFrame: matchingTimeFrames.size() :" + matchingTimeFrames.size());
+                throw new AzureCloudException("Too many TimeFrames available current time");
+            }
+            if(matchingTimeFrames.size() == 0){
+                return null;
+            }
+            return matchingTimeFrames.get(0);
         }
         
         public int getCurrentHour(){

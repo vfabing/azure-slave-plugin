@@ -20,6 +20,11 @@
                                 
 		  	</f:section>
 		 	 
+                        <f:entry title="">
+				<div align="right">
+					<f:repeatableDeleteButton value="${%Delete_TimeFrame}" />
+				</div>
+			</f:entry>
                         <!--TODO-->
 			<!--f:validateButton title="${%Verify_SpecificTimeFrame}" 
                                           progress="${%Verifying_SpecificTimeFrame}" 
