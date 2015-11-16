@@ -3,26 +3,47 @@ package com.microsoftopentechnologies.azure;
 import hudson.Extension;
 import hudson.model.Describable;
 import hudson.model.Descriptor;
-import hudson.util.ListBoxModel;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
-import javax.servlet.ServletException;
+import java.text.ParseException;
+import java.util.Calendar;
 import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 public class SpecificTimeFrame  implements Describable<SpecificTimeFrame>  {
     private int startHour;
+    private int startMinutes;
     private int endHour;
+    private int endMinutes;
     private int minVM;
     private int maxVM;
     
     @DataBoundConstructor
-    public SpecificTimeFrame(String startHour, String endHour, String minVM, String maxVM) {
+    public SpecificTimeFrame(String startHour, String startMinutes, String endHour, String endMinutes, String minVM, String maxVM) throws ParseException {
         this.startHour = Integer.parseInt(startHour);
+        this.startMinutes = Integer.parseInt(startMinutes);
         this.endHour = Integer.parseInt(endHour);
+        this.endMinutes = Integer.parseInt(endMinutes);
         this.minVM = Integer.parseInt(minVM);
         this.maxVM = Integer.parseInt(maxVM);
+    }
+
+    /**
+     * @return the startHour
+     */
+    public Calendar getStartTime() {
+        Calendar startTime = Calendar.getInstance();
+        startTime.set(Calendar.HOUR_OF_DAY, startHour);
+        startTime.set(Calendar.MINUTE, startMinutes);
+        return startTime;
+    }
+
+    /**
+     * @return the endHour
+     */
+    public Calendar getEndTime() {
+        Calendar startTime = Calendar.getInstance();
+        startTime.set(Calendar.HOUR_OF_DAY, endHour);
+        startTime.set(Calendar.MINUTE, endMinutes);
+        return startTime;
     }
 
     /**
@@ -33,12 +54,26 @@ public class SpecificTimeFrame  implements Describable<SpecificTimeFrame>  {
     }
 
     /**
+     * @return the startMinutes
+     */
+    public int getStartMinutes() {
+        return startMinutes;
+    }
+    
+    /**
      * @return the endHour
      */
     public int getEndHour() {
         return endHour;
     }
 
+    /**
+     * @return the endMinutes
+     */
+    public int getEndMinutes() {
+        return endMinutes;
+    }
+    
     /**
      * @return the minVM
      */
@@ -67,31 +102,6 @@ public class SpecificTimeFrame  implements Describable<SpecificTimeFrame>  {
         public String getDisplayName() {
             return null;
         }
-        
-//        public ListBoxModel doFillStartHourItems()throws IOException, ServletException {
-//            ListBoxModel model = new ListBoxModel();
-//
-//            List<String> startHours = Arrays.asList("8h", "9h", "10h");
-//
-//            for (String startHour : startHours) {
-//                    model.add(startHour);
-//            }
-//
-//            return model;
-//        }
-//    
-//        public ListBoxModel doFillEndHourItems()throws IOException, ServletException {
-//            ListBoxModel model = new ListBoxModel();
-//
-//            List<String> endHours = Arrays.asList("11h", "12h", "13h");
-//
-//            for (String endHour : endHours) {
-//                    model.add(endHour);
-//            }
-//
-//            return model;
-//        }
-    
     }
 
 }

@@ -45,7 +45,6 @@ import hudson.slaves.OfflineCause;
 import hudson.util.FormValidation;
 import hudson.util.StreamTaskListener;
 
-import com.microsoftopentechnologies.azure.AzureSlaveTemplate;
 import com.microsoftopentechnologies.azure.exceptions.AzureCloudException;
 import com.microsoftopentechnologies.azure.util.AzureUtil;
 import com.microsoftopentechnologies.azure.util.Constants;
@@ -131,9 +130,9 @@ public class AzureCloud extends Cloud {
 	}
 
 	public int getMaxVirtualMachinesLimit()  throws AzureCloudException {
-                int currentHour = getCurrentHour();
-                LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: currentHour :" + currentHour);
-                SpecificTimeFrame specificTimeFrame = getFirstMatchingSpecificTimeFrame(currentHour);
+                Calendar currentTime = getCurrentTime();
+                LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: currentTime : " + currentTime.get(Calendar.HOUR) + "h:" + currentTime.get(Calendar.MINUTE)+ "m");
+                SpecificTimeFrame specificTimeFrame = getMatchingSpecificTimeFrame(currentTime);
                 if(specificTimeFrame == null){
                     LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: No specific Time Frame found. Return maxVirtualMachinesLimit :" + maxVirtualMachinesLimit);
                     return maxVirtualMachinesLimit;
@@ -144,9 +143,9 @@ public class AzureCloud extends Cloud {
 	}
         
 	public int getMinVirtualMachinesLimit() throws AzureCloudException  {
-                int currentHour = getCurrentHour();
-                LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: currentHour :" + currentHour);
-                SpecificTimeFrame specificTimeFrame = getFirstMatchingSpecificTimeFrame(currentHour);
+                Calendar currentTime = getCurrentTime();
+                LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: currentTime : " + currentTime.get(Calendar.HOUR) + "h:" + currentTime.get(Calendar.MINUTE)+ "m");
+                SpecificTimeFrame specificTimeFrame = getMatchingSpecificTimeFrame(currentTime);
                 if(specificTimeFrame == null){
                     LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: No specific Time Frame found. Return 0");                   
                     return 0;
@@ -156,18 +155,19 @@ public class AzureCloud extends Cloud {
                 return minVM;
 	}
         
-        public SpecificTimeFrame getFirstMatchingSpecificTimeFrame(int currentHour) throws AzureCloudException {
+        public SpecificTimeFrame getMatchingSpecificTimeFrame(Calendar currentTime) throws AzureCloudException {
             List<SpecificTimeFrame> matchingTimeFrames = new ArrayList<SpecificTimeFrame>();
             for (SpecificTimeFrame specificTimeFrame : specificTimeFrames){
-                if(currentHour >= specificTimeFrame.getStartHour() 
-                        && currentHour < specificTimeFrame.getEndHour()){
+                if(currentTime.after(specificTimeFrame.getStartTime()) 
+                        && currentTime.before(specificTimeFrame.getEndTime())){
                     matchingTimeFrames.add(specificTimeFrame);
                 }                    
             }
             if(matchingTimeFrames.size() >= 2){
-                LOGGER.info("Azurecloud: Too many TimeFrames available current time");
+                LOGGER.info("Azurecloud: Too many TimeFrames available at current time");
+                LOGGER.info("Azurecloud: Please review your Azure Plugin Connfiguration in Jenkins Settings");
                 LOGGER.info("Azurecloud: getFirstMatchingSpecificTimeFrame: matchingTimeFrames.size() :" + matchingTimeFrames.size());
-                throw new AzureCloudException("Too many TimeFrames available current time");
+                throw new AzureCloudException("Too many TimeFrames available at current time. Please review your Azure Plugin Configuration in Jenkins Settings");
             }
             if(matchingTimeFrames.size() == 0){
                 return null;
@@ -175,8 +175,8 @@ public class AzureCloud extends Cloud {
             return matchingTimeFrames.get(0);
         }
         
-        public int getCurrentHour(){
-            return Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        public Calendar getCurrentTime(){
+            return Calendar.getInstance();
         }
 	
 	public String getPassPhrase() {

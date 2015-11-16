@@ -5,8 +5,14 @@
 				<f:entry title="${%Start_Hour}" field="startHour">
 					<f:textbox />
 				</f:entry>
+				<f:entry title="${%Start_Minutes}" field="startMinutes">
+					<f:textbox />
+				</f:entry>
 		  
 				<f:entry title="${%End_Hour}" field="endHour">
+					<f:textbox />
+				</f:entry>
+				<f:entry title="${%End_Minutes}" field="endMinutes">
 					<f:textbox />
 				</f:entry>
 		  
