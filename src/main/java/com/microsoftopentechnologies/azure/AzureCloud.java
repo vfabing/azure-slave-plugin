@@ -134,7 +134,7 @@ public class AzureCloud extends Cloud {
                 LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: currentTime : " + currentTime.get(Calendar.HOUR) + "h:" + currentTime.get(Calendar.MINUTE)+ "m");
                 SpecificTimeFrame specificTimeFrame = getMatchingSpecificTimeFrame(currentTime);
                 if(specificTimeFrame == null){
-                    LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: No specific Time Frame found. Return maxVirtualMachinesLimit :" + maxVirtualMachinesLimit);
+                    LOGGER.info("Azurecloud: getMaxVirtualMachinesLimit: No specific Time Frame found. Return Default maxVirtualMachinesLimit :" + maxVirtualMachinesLimit);
                     return maxVirtualMachinesLimit;
                 }
                 int maxVM = specificTimeFrame.getMaxVM();
@@ -147,7 +147,7 @@ public class AzureCloud extends Cloud {
                 LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: currentTime : " + currentTime.get(Calendar.HOUR) + "h:" + currentTime.get(Calendar.MINUTE)+ "m");
                 SpecificTimeFrame specificTimeFrame = getMatchingSpecificTimeFrame(currentTime);
                 if(specificTimeFrame == null){
-                    LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: No specific Time Frame found. Return 0");                   
+                    LOGGER.info("Azurecloud: getMinVirtualMachinesLimit: No specific Time Frame found. Return Default no mimimum limit = 0");                   
                     return 0;
                 }
                 int minVM = specificTimeFrame.getMinVM();
