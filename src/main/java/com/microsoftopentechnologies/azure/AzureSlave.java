@@ -22,6 +22,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
 
+import jenkins.model.Jenkins;
+
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import com.microsoftopentechnologies.azure.util.Constants;
@@ -37,6 +39,7 @@ import hudson.slaves.AbstractCloudSlave;
 import hudson.slaves.JNLPLauncher;
 import hudson.slaves.NodeProperty;
 import hudson.slaves.ComputerLauncher;
+import hudson.slaves.OfflineCause;
 import hudson.slaves.RetentionStrategy;
 
 public class AzureSlave extends AbstractCloudSlave  {
@@ -247,14 +250,18 @@ public class AzureSlave extends AbstractCloudSlave  {
                     return;
                 }
 		if (shutdownOnIdle) {
-			LOGGER.info("AzureSlave: idleTimeout: shutdownOnIdle is true, shutting down slave "+this.getDisplayName());
-			AzureManagementServiceDelegate.shutdownVirtualMachine(this);
-			setDeleteSlave(false);
+			// Call shutdown only if the slave is online
+			if (this.getComputer().isOnline()) {
+				LOGGER.info("AzureSlave: idleTimeout: shutdownOnIdle is true, shutting down slave "+this.getDisplayName());
+				this.getComputer().disconnect(OfflineCause.create(Messages._IDLE_TIMEOUT_SHUTDOWN()));
+				AzureManagementServiceDelegate.shutdownVirtualMachine(this);
+				setDeleteSlave(false);
+			}
 		} else {
 			LOGGER.info("AzureSlave: idleTimeout: shutdownOnIdle is false, deleting slave "+this.getDisplayName());
 			setDeleteSlave(true);
 			AzureManagementServiceDelegate.terminateVirtualMachine(this, true);
-			Hudson.getInstance().removeNode(this);
+			Jenkins.getInstance().removeNode(this);
 		}
 	}
         
@@ -276,14 +283,18 @@ public class AzureSlave extends AbstractCloudSlave  {
 	}
 	
 	public AzureCloud getCloud() {
-    	return (AzureCloud) Hudson.getInstance().getCloud(cloudName);
+    	return (AzureCloud) Jenkins.getInstance().getCloud(cloudName);
     }
 	
 	public void deprovision() throws Exception {
 		LOGGER.info("AzureSlave: deprovision: Deprovision called for slave "+this.getDisplayName());
 		AzureManagementServiceDelegate.terminateVirtualMachine(this, true);
 		setDeleteSlave(true);
-		Hudson.getInstance().removeNode(this);
+		Jenkins.getInstance().removeNode(this);
+	}
+	
+	public boolean isVMAliveOrHealthy() throws Exception {		
+		return AzureManagementServiceDelegate.isVMAliveOrHealthy(this);
 	}
 	
 	public void setTemplateStatus(String templateStatus, String templateStatusDetails) {

@@ -22,16 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 
 import javax.servlet.ServletException;
-import javax.ws.rs.core.NewCookie;
 
 import jenkins.model.Jenkins;
 
@@ -99,7 +92,7 @@ public class AzureSlaveTemplate implements Describable<AzureSlaveTemplate> {
 	public AzureSlaveTemplate(String templateName, String templateDesc, String labels, String location, String virtualMachineSize,
 			String storageAccountName, String noOfParallelJobs, Node.Mode useSlaveAlwaysIfAvail, String imageIdOrFamily, String slaveLaunchMethod,
 			String initScript, String adminUserName, String adminPassword, String virtualNetworkName, String subnetName,
-			String slaveWorkSpace, String jvmOptions, String cloudServiceName, String retentionTimeInMin, 
+			String slaveWorkSpace, String jvmOptions, String cloudServiceName, String retentionTimeInMin, boolean shutdownOnIdle, 
 			String templateStatus, String templateStatusDetails) {
 		this.templateName = templateName;
 		this.templateDesc = templateDesc;
@@ -113,7 +106,7 @@ public class AzureSlaveTemplate implements Describable<AzureSlaveTemplate> {
 			this.noOfParallelJobs = Integer.parseInt(noOfParallelJobs);
 		}
 		this.useSlaveAlwaysIfAvail = useSlaveAlwaysIfAvail;
-		this.shutdownOnIdle = false;
+		this.shutdownOnIdle = shutdownOnIdle;
 		this.imageIdOrFamily = imageIdOrFamily;
 		this.initScript = initScript;
 		this.slaveLaunchMethod = slaveLaunchMethod;
@@ -310,7 +303,7 @@ public class AzureSlaveTemplate implements Describable<AzureSlaveTemplate> {
 			};
 			
 			try {
-    			ExecutionEngine.executeWithRetry(task,  new LinearRetryForAllExceptions(30 /*maxRetries*/, 30/*waitinterval*/, 30 * 60/*timeout*/));
+    			ExecutionEngine.executeWithRetry(task,  new LinearRetryForAllExceptions(3 /*maxRetries*/, 30/*waitinterval*/, 2 * 60/*timeout*/));
     		} catch (AzureCloudException e) {
     			LOGGER.info("AzureSlaveTemplate: handleTemplateStatus: could not terminate or shutdown "+slave.getNodeName());
     		}
@@ -330,16 +323,15 @@ public class AzureSlaveTemplate implements Describable<AzureSlaveTemplate> {
 					Thread.sleep(5 * 60 * 1000);
 				} catch (InterruptedException e) {}
 			} else {
-				// Failure might be during Provisioning or post provisioning. back off for 10 minutes before retry.
-				LOGGER.info("AzureSlaveTemplate: handleTemplateStatus: Got "+failureStep+" error, waiting for 10 minutes before retry");
+				// Failure might be during Provisioning or post provisioning. back off for 5 minutes before retry.
+				LOGGER.info("AzureSlaveTemplate: handleTemplateStatus: Got "+failureStep+" error, waiting for 5 minutes before retry");
 				try {
-					Thread.sleep(10 * 60 * 1000);
+					Thread.sleep(5 * 60 * 1000);
 				} catch (InterruptedException e) {}
 			}
 			
 		}
 		setTemplateStatusDetails(message);
-		
 	}
 	
 	public int getVirtualMachineCount() throws Exception {

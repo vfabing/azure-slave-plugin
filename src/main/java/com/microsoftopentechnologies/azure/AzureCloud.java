@@ -28,6 +28,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 
+import jenkins.model.Jenkins;
+
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
@@ -106,7 +108,11 @@ public class AzureCloud extends Cloud {
 		
 		// return false if there is no template
 		if (template == null) {
-			LOGGER.info("Azurecloud: canProvision: template not found for label "+label.getDisplayName());
+			if (label != null) {
+				LOGGER.info("Azurecloud: canProvision: template not found for label " + label.getDisplayName());
+			} else {
+				LOGGER.info("Azurecloud: canProvision: template not found for empty label.	All templates exclusive to jobs that require that template." );
+			}
 			return false;
 		} else if (template.getTemplateStatus().equalsIgnoreCase(Constants.TEMPLATE_STATUS_DISBALED)) {
 			LOGGER.info("Azurecloud: canProvision: template "+template.getTemplateName() + 
@@ -186,8 +192,14 @@ public class AzureCloud extends Cloud {
 	/** Returns slave template associated with the label */
 	public AzureSlaveTemplate getAzureSlaveTemplate(Label label) {
 		for (AzureSlaveTemplate slaveTemplate : instTemplates) {
-			if (label.matches(slaveTemplate.getLabelDataSet())) {
-				return slaveTemplate;
+			if (slaveTemplate.getUseSlaveAlwaysIfAvail() == Node.Mode.NORMAL) {
+				if (label == null || label.matches(slaveTemplate.getLabelDataSet())) {
+					return slaveTemplate;
+				}
+			} else if (slaveTemplate.getUseSlaveAlwaysIfAvail() == Node.Mode.EXCLUSIVE) {
+				if (label != null && label.matches(slaveTemplate.getLabelDataSet())) {
+					return slaveTemplate;
+				}
 			}
 		}
 		return null;
@@ -248,6 +260,48 @@ public class AzureCloud extends Cloud {
 					Computer.threadPoolForRemoting.submit(new Callable<Node>() {
 						
 						public Node call() throws Exception {
+							LOGGER.info("Azure Cloud: provision: inside call method");
+							
+							// Verify if there are any shutdown(deallocated) nodes that can be reused.
+							for (Computer slaveComputer : Jenkins.getInstance().getComputers()) {
+								LOGGER.info("Azure Cloud: provision: got slave computer "+slaveComputer.getName());
+								if (slaveComputer instanceof AzureComputer && slaveComputer.isOffline()) {
+									AzureComputer azureComputer = (AzureComputer)slaveComputer;
+									AzureSlave slaveNode = azureComputer.getNode();
+									
+									LOGGER.info("Azure Cloud: provision: slave node "+slaveNode.getLabelString());
+									LOGGER.info("Azure Cloud: provision: slave template "+slaveTemplate.getLabels());
+
+									if (isNodeEligibleForReuse(slaveNode, slaveTemplate)) {
+										try {
+											if(AzureManagementServiceDelegate.isVirtualMachineExists(slaveNode)) {
+												LOGGER.info("Found existing node, starting VM "+slaveNode.getNodeName());
+												AzureManagementServiceDelegate.startVirtualMachine(slaveNode);
+												// set virtual machine details again
+												Thread.sleep(30 * 1000); // wait for 30 seconds
+												 AzureManagementServiceDelegate.setVirtualMachineDetails(slaveNode, slaveTemplate);
+												 Hudson.getInstance().addNode(slaveNode);
+												 if (slaveNode.getSlaveLaunchMethod().equalsIgnoreCase("SSH")) 
+													 slaveNode.toComputer().connect(false).get();
+												 else
+													// Wait until node is online
+													 waitUntilOnline(slaveNode);
+												 azureComputer.setAcceptingTasks(true);
+												 return slaveNode;
+											} else {
+												slaveNode.setDeleteSlave(true);
+											}
+										} catch (Exception e) {
+											// TODO Auto-generated catch block
+											e.printStackTrace();
+										}
+									}
+									
+								}
+							}
+							
+							LOGGER.info("Azure Cloud: provision: Provisioning new slave for label "+slaveTemplate.getLabels());
+
 							@SuppressWarnings("deprecation")
 							AzureSlave slave = slaveTemplate.provisionSlave(new StreamTaskListener(System.out));
 							// Get virtual machine properties
@@ -256,15 +310,15 @@ public class AzureCloud extends Cloud {
 							slaveTemplate.setVirtualMachineDetails(slave);
 							try {
 								if (slave.getSlaveLaunchMethod().equalsIgnoreCase("SSH")) {
-									 slaveTemplate.waitForReadyRole(slave);
-									 LOGGER.info("Azure Cloud: provision: Waiting for ssh server to comeup");
-									 Thread.sleep(2 * 60 * 1000);
+									// slaveTemplate.waitForReadyRole(slave);
+									// LOGGER.info("Azure Cloud: provision: Waiting for ssh server to comeup");
+									// Thread.sleep(2 * 60 * 1000);
 									 LOGGER.info("Azure Cloud: provision: Adding slave to azure nodes ");
 									 Hudson.getInstance().addNode(slave);
 									 slave.toComputer().connect(false).get();
 								 } else if (slave.getSlaveLaunchMethod().equalsIgnoreCase("JNLP")) {
 									 LOGGER.info("Azure Cloud: provision: Checking for slave status");
-									 slaveTemplate.waitForReadyRole(slave);
+									 // slaveTemplate.waitForReadyRole(slave);
 									 LOGGER.info("Azure Cloud: provision: Adding slave to azure nodes ");
 									 Hudson.getInstance().addNode(slave);
 									 
@@ -294,17 +348,17 @@ public class AzureCloud extends Cloud {
 				try {
 					slave.toComputer().waitUntilOnline();
 				} catch (InterruptedException e) {
-                	 // just ignore
-                }
+					 // just ignore
+				}
 				return "success";
 			}
 		};
-	    Future<String> future = executorService.submit(callableTask);
-	    
-	    try {
-	    	// 30 minutes is decent time for the node to be alive
-	    	String result = future.get(30, TimeUnit.MINUTES); 
-	    	LOGGER.info("Azure Cloud: waitUntilOnline: node is alive , result "+result);
+		Future<String> future = executorService.submit(callableTask);
+		
+		try {
+			// 30 minutes is decent time for the node to be alive
+			String result = future.get(30, TimeUnit.MINUTES); 
+			LOGGER.info("Azure Cloud: waitUntilOnline: node is alive , result "+result);
 		} catch (TimeoutException ex) {
 			LOGGER.info("Azure Cloud: waitUntilOnline: Got TimeoutException "+ex);
 			markSlaveForDeletion(slave, Constants.JNLP_POST_PROV_LAUNCH_FAIL);
@@ -314,15 +368,39 @@ public class AzureCloud extends Cloud {
 		} catch (ExecutionException ex) {
 			LOGGER.info("Azure Cloud: ExecutionException: Got TimeoutException "+ex);
 			markSlaveForDeletion(slave, Constants.JNLP_POST_PROV_LAUNCH_FAIL);
-	    } finally {
-	       future.cancel(true);
-	       executorService.shutdown();
-	    }
+		} finally {
+		   future.cancel(true);
+		   executorService.shutdown();
+		}
+	}
+	
+	/**
+	 * Checks if node configuration matches with template definition.
+	 */
+	private static boolean isNodeEligibleForReuse(AzureSlave slaveNode, AzureSlaveTemplate slaveTemplate) {
+
+		// Do not reuse slave if it is marked for deletion.  
+		if (slaveNode.isDeleteSlave()) {
+			return false;
+		}
+		
+		// Check for null label and mode.
+		if (AzureUtil.isNull(slaveNode.getLabelString()) && (slaveNode.getMode() == Node.Mode.NORMAL)) {
+			return true;
+		}
+		
+		if (AzureUtil.isNotNull(slaveNode.getLabelString()) &&slaveNode.getLabelString().equalsIgnoreCase(slaveTemplate.getLabels())) {
+			return true;
+		}
+
+		return false;
 	}
 	
 	private static void markSlaveForDeletion(AzureSlave slave, String message) {
 		slave.setTemplateStatus(Constants.TEMPLATE_STATUS_DISBALED, message);
-		slave.toComputer().setTemporarilyOffline(true, OfflineCause.create(Messages._Slave_Failed_To_Connect()));
+		if (slave.toComputer() != null) {
+			slave.toComputer().setTemporarilyOffline(true, OfflineCause.create(Messages._Slave_Failed_To_Connect()));
+		}
 		slave.setDeleteSlave(true);
 	}
 	
@@ -377,11 +455,11 @@ public class AzureCloud extends Cloud {
 					 LOGGER.info("Azure Cloud: provision: Waiting for ssh server to come up");
 					 Thread.sleep(2 * 60 * 1000);
 					 LOGGER.info("Azure Cloud: provision: ssh server may be up by this time");
-					 LOGGER.info("Azure Cloud:  provision: Adding slave to azure nodes ");
+					 LOGGER.info("Azure Cloud: provision: Adding slave to azure nodes ");
 					 Hudson.getInstance().addNode(slave);
 					 slave.toComputer().connect(false).get();
 				 } else if (slave.getSlaveLaunchMethod().equalsIgnoreCase("JNLP")) {
-					 LOGGER.info("Azure Cloud:  provision: Checking for slave status");
+					 LOGGER.info("Azure Cloud: provision: Checking for slave status");
 					 slaveTemplate.waitForReadyRole(slave);
 					 Hudson.getInstance().addNode(slave);
 					 

@@ -24,7 +24,6 @@ import com.microsoftopentechnologies.azure.AzureComputer;
 import com.microsoftopentechnologies.azure.Messages;
 import com.microsoftopentechnologies.azure.util.AzureUtil;
 import com.microsoftopentechnologies.azure.util.Constants;
-import com.microsoftopentechnologies.azure.util.FailureStage;
 
 import hudson.model.Descriptor;
 import hudson.model.Hudson;
@@ -58,6 +57,17 @@ public class AzureSSHLauncher extends ComputerLauncher {
 		LOGGER.info("AzureSSHLauncher: launch: launch method called for slave ");
 		AzureComputer computer = (AzureComputer)slaveComputer;
 		AzureSlave slave = computer.getNode();
+		
+		//check if VM is already stopped or stopping or getting deleted , if yes then there is no point in trying to connect
+		//Added this check - since after restarting jenkins master, jenkins is trying to connect to all the slaves although slaves are suspended.
+		try {
+			if (!slave.isVMAliveOrHealthy()) {
+				return;
+			}
+		} catch (Exception e1) {
+			// ignoring exception purposefully
+			e1.printStackTrace();
+		}
 		
 		PrintStream logger = listener.getLogger();
 		boolean successful = false;

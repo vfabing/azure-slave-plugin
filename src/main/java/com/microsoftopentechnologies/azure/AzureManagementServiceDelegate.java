@@ -18,15 +18,10 @@ package com.microsoftopentechnologies.azure;
 import hudson.model.Descriptor.FormException;
 import hudson.model.Hudson;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.security.MessageDigest;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
 import java.text.Format;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -50,6 +45,8 @@ import java.util.logging.Logger;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
 
+import jenkins.slaves.JnlpSlaveAgentProtocol;
+
 import org.codehaus.jackson.JsonFactory;
 import org.codehaus.jackson.JsonGenerator;
 import org.xml.sax.SAXException;
@@ -60,7 +57,6 @@ import com.microsoft.windowsazure.exception.ServiceException;
 import com.microsoft.windowsazure.management.ManagementClient;
 import com.microsoft.windowsazure.management.compute.ComputeManagementClient;
 import com.microsoft.windowsazure.management.compute.ComputeManagementService;
-import com.microsoft.windowsazure.management.compute.models.CertificateFormat;
 import com.microsoft.windowsazure.management.compute.models.ConfigurationSet;
 import com.microsoft.windowsazure.management.compute.models.ConfigurationSetTypes;
 import com.microsoft.windowsazure.management.compute.models.DeploymentGetResponse;
@@ -81,9 +77,6 @@ import com.microsoft.windowsazure.management.compute.models.ResourceExtensionPar
 import com.microsoft.windowsazure.management.compute.models.ResourceExtensionReference;
 import com.microsoft.windowsazure.management.compute.models.Role;
 import com.microsoft.windowsazure.management.compute.models.RoleInstance;
-import com.microsoft.windowsazure.management.compute.models.ServiceCertificateCreateParameters;
-import com.microsoft.windowsazure.management.compute.models.ServiceCertificateGetParameters;
-import com.microsoft.windowsazure.management.compute.models.ServiceCertificateGetResponse;
 import com.microsoft.windowsazure.management.compute.models.VirtualMachineCreateDeploymentParameters;
 import com.microsoft.windowsazure.management.compute.models.VirtualMachineCreateParameters;
 import com.microsoft.windowsazure.management.compute.models.VirtualMachineOSImageListResponse;
@@ -261,7 +254,7 @@ public class AzureManagementServiceDelegate {
 				// Throw exception so that in retry this will go through
 				throw new AzureCloudException("Provisioning Failure: Exception occured while creating virtual machine. Root cause: "+ex.getMessage());
 			} else {
-				LOGGER.info("AzureManagementServiceDelegate: handleProvisioningServiceException: conflict error: waiting for a minute ad will try again");
+				LOGGER.info("AzureManagementServiceDelegate: handleProvisioningServiceException: conflict error: waiting for a minute and will try again");
 				try {
 					Thread.sleep(60 * 1000);
 				} catch (InterruptedException e) {
@@ -331,6 +324,8 @@ public class AzureManagementServiceDelegate {
 			String fileName = cloudServiceName+roleName+"initscript.ps1";
 			String initScript = null;
 			
+			String jnlpSecret = JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(roleName);
+			
 			if (AzureUtil.isNull(template.getInitScript())) {
 				// Move this to a file
 				initScript = AzureUtil.DEFAULT_INIT_SCRIPT;
@@ -349,7 +344,7 @@ public class AzureManagementServiceDelegate {
 			}
 			LOGGER.info("AzureManagementServiceDelegate: handleCustomScriptExtension: Jenkins server url "+jenkinsServerURL);
 			// set custom script extension in role
-			return addResourceExtenions(roleName, template.getStorageAccountName(), storageAccountKey, Constants.CONFIG_CONTAINER_NAME, blobURL, fileName, jenkinsServerURL);
+			return addResourceExtenions(roleName, template.getStorageAccountName(), storageAccountKey, Constants.CONFIG_CONTAINER_NAME, blobURL, fileName, jenkinsServerURL, jnlpSecret);
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new AzureCloudException("AzureManagementServiceDelegate: handleCustomScriptExtension: Exception occured while adding custom extension "+e);
@@ -359,7 +354,7 @@ public class AzureManagementServiceDelegate {
 	
     /** Adds BGInfo and CustomScript extension */
 	public static ArrayList<ResourceExtensionReference> addResourceExtenions(String roleName, String storageAccountName, 
-			String storageAccountKey, String containerName, String blobURL, String fileName, String jenkinsServerURL) throws Exception {
+			String storageAccountKey, String containerName, String blobURL, String fileName, String jenkinsServerURL, String jnlpSecret) throws Exception {
 		ArrayList<ResourceExtensionReference> resourceExtensions = new ArrayList<ResourceExtensionReference>();
 
 		// Add custom script extension
@@ -394,7 +389,7 @@ public class AzureManagementServiceDelegate {
 //		}
 //		LOGGER.info("AzureManagementServiceDelegate: addResourceExtenions: user.getId() "+userID + " API token "+token);
 		
-		pubicConfig.setValue(getCustomScriptPublicConfigValue(sasURL, fileName, jenkinsServerURL, roleName));
+		pubicConfig.setValue(getCustomScriptPublicConfigValue(sasURL, fileName, jenkinsServerURL, roleName, jnlpSecret));
 		pubicConfig.setType("Public");
 
 		ResourceExtensionParameterValue privateConfig = new ResourceExtensionParameterValue();
@@ -407,8 +402,8 @@ public class AzureManagementServiceDelegate {
 	}
 	
 	/** JSON string custom script public config value */
-	public static String getCustomScriptPublicConfigValue(String sasURL, String fileName, String jenkinsServerURL, String vmName)
-	throws Exception {
+	public static String getCustomScriptPublicConfigValue(String sasURL, String fileName, String jenkinsServerURL, String vmName, 
+			String jnlpSecret) throws Exception {
 		JsonFactory factory = new JsonFactory();
 		StringWriter stringWriter = new StringWriter();
 		JsonGenerator json = factory.createJsonGenerator(stringWriter);
@@ -418,7 +413,7 @@ public class AzureManagementServiceDelegate {
 		json.writeString(sasURL);
 		json.writeEndArray();
 		json.writeStringField("commandToExecute","powershell -ExecutionPolicy Unrestricted -file " + fileName
-			    + " " + jenkinsServerURL + " " + vmName);
+			    + " " + jenkinsServerURL + " " + vmName + " " + jnlpSecret+ "  "+ " 2>>c:\\error.log");
 		json.writeEndObject();
 		json.close();
 		return stringWriter.toString();
@@ -452,6 +447,7 @@ public class AzureManagementServiceDelegate {
 		ComputeManagementClient client = ServiceDelegateHelper.getComputeManagementClient(config);
 		DeploymentGetResponse response = client.getDeploymentsOperations().getByName(azureSlave.getCloudServiceName(), 
 				azureSlave.getDeploymentName());
+		
 		// Getting the first virtual IP
 		azureSlave.setPublicDNSName(response.getVirtualIPAddresses().get(0).getAddress().getHostAddress());
 
@@ -504,93 +500,6 @@ public class AzureManagementServiceDelegate {
 		return false;
 	}
 
-	/**
-	 * Uploads certificate to windows azure certificate store.
-	 * @param client
-	 * @param cloudServiceName
-	 * @param certData
-	 * @throws AzureCloudException
-	 */
-	private static void uploadCertsIfNotExists(ComputeManagementClient client, String cloudServiceName, byte[] certData) 
-			throws AzureCloudException {
-		try {
-			if (checkIfCertExists(client, cloudServiceName, certData)) {
-				LOGGER.info("AzureManagementServiceDelegate: uploadCertsIfNotExists: Certificate already exists in hosted service "	+ cloudServiceName);
-				return;
-			}
-
-			// Try to upload to hosted service
-			ServiceCertificateCreateParameters params = new ServiceCertificateCreateParameters();
-			params.setCertificateFormat(CertificateFormat.Cer);
-			params.setData(certData);
-			client.getServiceCertificatesOperations().create(cloudServiceName, params);
-		} catch (Exception e) {
-			e.printStackTrace();
-			LOGGER.severe("Error: Unable to upload certificates due to " + e.getMessage());
-			throw new AzureCloudException("Error: Unable to upload certificates due to " + e.getMessage());
-		}
-	}
-
-	/**
-	 * Checks if certificate is alreday present in Azure certificate storage
-	 * @param client
-	 * @param cloudServiceName
-	 * @param certData
-	 * @return
-	 */
-	private static boolean checkIfCertExists(ComputeManagementClient client, String cloudServiceName, byte[] certData) {
-		boolean exists = false;
-		try {
-			Map<String, String> certMap = getCertInfo(certData);
-
-			if (certMap != null) {
-				ServiceCertificateGetParameters certParams = new ServiceCertificateGetParameters();
-				certParams.setServiceName(cloudServiceName);
-				certParams.setThumbprint(certMap.get("thumbPrint"));
-				certParams.setThumbprintAlgorithm(certMap.get("certAlg"));
-				ServiceCertificateGetResponse resp = client.getServiceCertificatesOperations().get(certParams);
-				//TODO: add additional checks for certificate support
-				exists = true;
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			LOGGER.severe("Error occured while getting cert data");
-			return exists;
-		}
-		return exists;
-	}
-
-	/**
-	 * Gets certificate information
-	 * @param certData
-	 * @return
-	 * @throws AzureCloudException
-	 */
-	private static Map<String, String> getCertInfo(byte[] certData) throws AzureCloudException {
-		Map<String, String> certDataMap = new HashMap<String, String>();
-
-		try {
-			CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
-			InputStream is = new ByteArrayInputStream(certData);
-			X509Certificate cert = (X509Certificate) certificateFactory.generateCertificate(is);
-			String certAlg = cert.getSigAlgName();
-			certDataMap.put("certAlg", certAlg);
-			// Calculate thumbPrint
-			MessageDigest mdigest = MessageDigest.getInstance(certAlg);
-			byte[] der = cert.getEncoded();
-			mdigest.update(der);
-			byte[] digest = mdigest.digest();
-			String thumbPrint = AzureUtil.hexify(digest).toUpperCase();
-			certDataMap.put("thumbPrint", thumbPrint);
-		} catch (Exception e) {
-			e.printStackTrace();
-			LOGGER.severe("Error occured while parsing certificate data " + e.getMessage());
-			throw new AzureCloudException("Error occured while parsing certificate data "
-			+ e.getMessage());
-		}
-		return certDataMap.size() > 0 ? certDataMap : null;
-	}
-    
 	/** Creates Azure slave object with necessary info */
 	private static AzureSlave parseDeploymentResponse(OperationStatusResponse response, String cloudServiceName,
 			AzureSlaveTemplate template, VirtualMachineCreateDeploymentParameters params) throws AzureCloudException {
@@ -1225,6 +1134,25 @@ public class AzureManagementServiceDelegate {
 		return status;
 	}
 	
+	/** Checks if VM is reachable and in a valid state to connect  */	
+	public static boolean isVMAliveOrHealthy(AzureSlave slave) throws Exception {
+		Configuration config = ServiceDelegateHelper.loadConfiguration(slave.getSubscriptionID(), slave.getManagementCert(),
+				                                                         slave.getPassPhrase(), slave.getManagementURL());
+		String status = getVirtualMachineStatus(config, slave.getCloudServiceName(), DeploymentSlot.Production, slave.getNodeName());
+		LOGGER.info("AzureManagementServiceDelegate: isVMAliveOrHealthy: status " + status);
+		// if VM status is DeletingVM/StoppedVM/StoppingRole/StoppingVM then consider VM to be not healthy
+		if (status != null &&  
+				(Constants.DELETING_VM_STATUS.equalsIgnoreCase(status) ||
+				 Constants.STOPPED_VM_STATUS.equalsIgnoreCase(status) ||
+				 Constants.STOPPING_VM_STATUS.equalsIgnoreCase(status) ||
+				 Constants.STOPPING_ROLE_STATUS.equalsIgnoreCase(status) ||
+				 Constants.STOPPED_DEALLOCATED_VM_STATUS.equalsIgnoreCase(status))) {
+			return false;
+		} else {
+			return true;
+		}
+	}
+	
 	/** Retrieves count of role instances in a cloud service*/
 	public static int getRoleCount(ComputeManagementClient client, String cloudServiceName) throws Exception {
 		DeploymentGetResponse response = client.getDeploymentsOperations().getBySlot(cloudServiceName, DeploymentSlot.Production);
@@ -1312,8 +1240,25 @@ public class AzureManagementServiceDelegate {
 	
 	/** Starts Azure virtual machine */
 	public static void startVirtualMachine(AzureSlave slave) throws Exception {
+		LOGGER.info("AzureManagementServiceDelegate: startVirtualMachine: "+slave.getNodeName());
+		int retryCount = 0;
+		boolean successful = false;
 		ComputeManagementClient client = ServiceDelegateHelper.getComputeManagementClient(slave);
-		client.getVirtualMachinesOperations().start(slave.getCloudServiceName(), slave.getDeploymentName(), slave.getNodeName());
+		
+		while (!successful) {
+			try {
+				client.getVirtualMachinesOperations().start(slave.getCloudServiceName(), slave.getDeploymentName(), slave.getNodeName());
+				successful = true; // may be we can just return
+			} catch (Exception e) {
+				LOGGER.info("AzureManagementServiceDelegate: startVirtualMachine: got exception while starting VM "+ slave.getNodeName()+ ". Will retry again after 30 seconds. Current retry count "+retryCount + " / " + Constants.MAX_PROV_RETRIES + "\n");
+				if (retryCount > Constants.MAX_PROV_RETRIES) { 
+					throw e;
+				} else {
+					retryCount++;
+					Thread.sleep(30 * 1000); // wait for 30 seconds
+				}
+			}
+		}
 	}
 	
 	/** Gets Virtual Image List **/
@@ -1596,11 +1541,6 @@ public class AzureManagementServiceDelegate {
 			return errors;
 		}
 		
-		//Verify labels
-		if (isNullOrEmpty(labels)) {
-			errors.add(Messages.Azure_GC_Template_Label_Null_Or_Empty());
-		}
-		
 		//Verify number of parallel jobs
 		if (returnOnSingleError) {
 			validationResult = verifyNoOfExecutors(noOfParallelJobs);
@@ -1868,8 +1808,9 @@ public class AzureManagementServiceDelegate {
 					}
 				}
 				
-				if (imageProps!= null && !imageProps.get(ImageProperties.LOCATION).contains(location)) {
-					return Messages.Azure_GC_Template_ImageFamilyOrID_LOC_No_Match(imageProps.get(ImageProperties.LOCATION)) +saValidation;
+				String storageLocation = imageProps.get(ImageProperties.LOCATION);
+				if (imageProps!= null && storageLocation != null && !storageLocation.contains(location)) {
+					return Messages.Azure_GC_Template_ImageFamilyOrID_LOC_No_Match(storageLocation) +saValidation;
 				}
 				
 				if(imageProps!= null && (!Constants.OS_TYPE_WINDOWS.equalsIgnoreCase(imageProps.get(ImageProperties.OSTYPE)) && 

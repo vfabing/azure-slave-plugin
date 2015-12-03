@@ -1,6 +1,8 @@
 /bin
 /target
+/work
 
 *.idea
 *.settings
-/work/
+*.project
+*.classpath

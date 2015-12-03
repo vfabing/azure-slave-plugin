@@ -16,7 +16,12 @@
 package com.microsoftopentechnologies.azure;
 
 import java.io.IOException;
+import java.util.concurrent.Callable;
 import java.util.logging.Logger;
+
+import com.microsoftopentechnologies.azure.exceptions.AzureCloudException;
+import com.microsoftopentechnologies.azure.retry.DefaultRetryStrategy;
+import com.microsoftopentechnologies.azure.util.ExecutionEngine;
 
 import jenkins.model.Jenkins;
 import hudson.Extension;
@@ -36,45 +41,31 @@ public final class AzureSlaveCleanUpTask extends AsyncPeriodicWork {
 		for (Computer computer : Jenkins.getInstance().getComputers()) {
 			if (computer instanceof AzureComputer) {
 				AzureComputer azureComputer = (AzureComputer)computer;
-				AzureSlave slaveNode = azureComputer.getNode();
+				final AzureSlave slaveNode = azureComputer.getNode();
 				
-				try {
-					if (azureComputer.isOffline()) {
-						if (!slaveNode.isDeleteSlave()) {
-							// Find out if node exists in azure , if not continue with delete else do not delete node
-							// although it is offline. May be JNLP or SSH launch is in progress
-							if(AzureManagementServiceDelegate.isVirtualMachineExists(slaveNode)) {
-								LOGGER.info("AzureSlaveCleanUpTask: execute: VM "+slaveNode.getDisplayName()+" exists in cloud");
-								continue;
-							}
+				if (azureComputer.isOffline()) {
+					if(AzureManagementServiceDelegate.isVirtualMachineExists(slaveNode)) {
+						if (!slaveNode.isDeleteSlave()) { 
+							continue; //If agent is not marked for deletion, it means it is active.
 						}
 						
-						int retryCount = 0;
-		                boolean successful = false;
-		                
-		                // Retrying for 30 times with 30 seconds wait time between each retry
-		                while (retryCount < 30 && !successful) {
-		                	try {
-		                		slaveNode.idleTimeout();
-								successful = true;
-							} catch (Exception e) {
-								retryCount++;
-								LOGGER.info("AzureSlaveCleanUpTask: execute: Exception occured while calling timeout on node , \n"
-											+ "Will retry again after 30 seconds. Current retry count "+retryCount + "\n"
-											+ "Error code "+e.getMessage());
-								// We won't get exception for RNF , so for other exception types we can retry
-								try {
-									Thread.sleep(30 * 1000);
-								} catch (InterruptedException e1) {
-									e1.printStackTrace();
-								}
+						Callable<Void> task = new Callable<Void>() {
+							public Void call() throws Exception {
+								slaveNode.idleTimeout();
+								return null;
 							}
-	                	}
-		                
-		                Jenkins.getInstance().removeNode(slaveNode);
+						};
+						
+						try {
+							ExecutionEngine.executeWithRetry(task, new DefaultRetryStrategy(3 /*max retries*/, 
+									10 /*Default backoff in seconds*/ , 1 * 60 /* Max. timeout in seconds */));
+				         } catch (AzureCloudException exception) {
+				        	// No need to throw exception back, just log and move on. 
+				        	 LOGGER.info("AzureSlaveCleanUpTask: execute: failed to remove node "+exception);
+				         }
+					} else {
+						Jenkins.getInstance().removeNode(slaveNode);
 					}
-				} catch (Exception e) {
-					LOGGER.severe("AzureSlaveCleanUpTask: execute: failed to remove node " +e);
 				}
 			}
 		}
@@ -82,7 +73,6 @@ public final class AzureSlaveCleanUpTask extends AsyncPeriodicWork {
 
 	public long getRecurrencePeriod() {
 		// Every 5 minutes
-		return 5 * 60 * 1000;
+		return 15 * 60 * 1000;
 	}
-
 }
