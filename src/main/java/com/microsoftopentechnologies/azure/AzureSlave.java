@@ -279,7 +279,7 @@ public class AzureSlave extends AbstractCloudSlave  {
 		Configuration config = ServiceDelegateHelper.loadConfiguration(azureCloud.getSubscriptionId(), 
 				azureCloud.getServiceManagementCert(), azureCloud.getPassPhrase(), azureCloud.getServiceManagementURL());
 		ComputeManagementClient client = ServiceDelegateHelper.getComputeManagementClient(config);
-		return AzureManagementServiceDelegate.getVirtualMachineCount(client);
+		return AzureManagementServiceDelegate.getRunningVirtualMachineCount(client);
 	}
 	
 	public AzureCloud getCloud() {

@@ -61,6 +61,7 @@ import com.microsoft.windowsazure.management.compute.models.ConfigurationSet;
 import com.microsoft.windowsazure.management.compute.models.ConfigurationSetTypes;
 import com.microsoft.windowsazure.management.compute.models.DeploymentGetResponse;
 import com.microsoft.windowsazure.management.compute.models.DeploymentSlot;
+import com.microsoft.windowsazure.management.compute.models.DeploymentStatus;
 import com.microsoft.windowsazure.management.compute.models.HostedServiceCreateParameters;
 import com.microsoft.windowsazure.management.compute.models.HostedServiceGetResponse;
 import com.microsoft.windowsazure.management.compute.models.HostedServiceListResponse;
@@ -77,6 +78,7 @@ import com.microsoft.windowsazure.management.compute.models.ResourceExtensionPar
 import com.microsoft.windowsazure.management.compute.models.ResourceExtensionReference;
 import com.microsoft.windowsazure.management.compute.models.Role;
 import com.microsoft.windowsazure.management.compute.models.RoleInstance;
+import com.microsoft.windowsazure.management.compute.models.RoleInstancePowerState;
 import com.microsoft.windowsazure.management.compute.models.VirtualMachineCreateDeploymentParameters;
 import com.microsoft.windowsazure.management.compute.models.VirtualMachineCreateParameters;
 import com.microsoft.windowsazure.management.compute.models.VirtualMachineOSImageListResponse;
@@ -1194,6 +1196,51 @@ public class AzureManagementServiceDelegate {
 		return vmRoleCount;
 	}
 	
+	/** Retrieves count of virtual machine roles in a azure subscription */
+	public static int getRunningVirtualMachineCount(ComputeManagementClient client) throws Exception {
+		int vmRoleCount = 0;
+		ArrayList<HostedService> hostedServices = null;
+		
+		try {
+			HostedServiceListResponse response = client.getHostedServicesOperations().list();
+			hostedServices = response.getHostedServices();
+		} catch (Exception e) {
+			LOGGER.info("AzureManagementServiceDelegate: getRunningVirtualMachineCount: Got exception while getting hosted services info ,"
+					+ " assuming that there are no hosted services "+ e);
+			return vmRoleCount;
+		}
+
+		for (HostedService hostedService : hostedServices) {
+			ArrayList<Role> roles = null;
+                        ArrayList<RoleInstance> roleInstances = null;
+			try {
+				DeploymentGetResponse deploymentResp = client.getDeploymentsOperations().getBySlot(hostedService.getServiceName(), 
+						DeploymentSlot.Production);
+                                
+				roles = deploymentResp.getRoles();
+                                roleInstances = deploymentResp.getRoleInstances();
+				for (int i = 0; i < roles.size(); i++) {
+                                        // If the Role is Virtual Machine and if its powerState is either "Started" or "Starting"
+                                        if (roles.get(i).getRoleType().equals(VirtualMachineRoleType.PersistentVMRole.toString())
+                                         && (roleInstances.get(i).getPowerState().equals(RoleInstancePowerState.Started)
+                                          || roleInstances.get(i).getPowerState().equals(RoleInstancePowerState.Starting))) {
+						vmRoleCount += 1;
+					}
+                                }
+//				for (Role role : roles) {
+//					if (role.getRoleType().equals(VirtualMachineRoleType.PersistentVMRole.toString())) {
+//						vmRoleCount += 1;
+//					}
+//				}
+				
+			} catch (Exception e) {
+				continue;
+			}
+		}
+		LOGGER.info("AzureManagementServiceDelegate: getRunningVirtualMachineCount: Running virtual machines count "+vmRoleCount);
+		return vmRoleCount;
+	}
+	
 	
 	/** Shutdowns Azure virtual machine */	
 	public static void shutdownVirtualMachine(AzureSlave slave) throws Exception {
@@ -1687,7 +1734,7 @@ public class AzureManagementServiceDelegate {
 		ComputeManagementClient client = ServiceDelegateHelper.getComputeManagementClient(config);
 		maxVMs = considerDefaultVMLimit? Constants.DEFAULT_MAX_VM_LIMIT : maxVMs;
 		try {
-			int currentCount = getVirtualMachineCount(client);
+                        int currentCount = getRunningVirtualMachineCount(client);
 			
 			if (currentCount < maxVMs) {
 				return Constants.OP_SUCCESS;
